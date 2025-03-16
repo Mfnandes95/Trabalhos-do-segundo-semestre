@@ -2,41 +2,73 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define TAMANHO_TABELA 10
+#define TAMANHO_INICIAL 10
+#define FATOR_CARGA_MAXIMO 0.7
 
-// Estrutura do nó
 typedef struct node {
     char key[50];
-    int valor; // Corrigido para manter consistência com o uso no código
+    int valor;
     struct node* next;
 } node;
 
-// Função de hash
-unsigned int hash(const char* key) {
-    unsigned int hash = 0;
-    while (*key) {
-        hash = (hash << 5) + *key++;
+unsigned int hash(const char* key, unsigned int tamanho_tabela) {
+    unsigned int hash = 5381;
+    int c;
+    while ((c = *key++)) {
+        hash = ((hash << 5) + hash) + c; 
     }
-    return hash % TAMANHO_TABELA;
+    return hash % tamanho_tabela;
 }
 
-// Função para inserir na tabela
-void insert(node* table[], const char* key, int value) {
-    unsigned int index = hash(key);
-    node* newNode = (node*)malloc(sizeof(node));
-    if (!newNode) {
+node* criarNo(const char* key, int value) {
+    node* novoNo = (node*)malloc(sizeof(node));
+    if (!novoNo) {
         printf("Erro ao alocar memória.\n");
-        return;
+        return NULL;
     }
-    strcpy(newNode->key, key);
-    newNode->valor = value; // Corrigido: atribui ao membro correto
-    newNode->next = table[index];
-    table[index] = newNode;
+    strcpy(novoNo->key, key);
+    novoNo->valor = value;
+    novoNo->next = NULL;
+    return novoNo;
 }
 
-// Função para buscar na tabela
-int search(node* table[], const char* key) {
-    unsigned int index = hash(key);
+void insert(node** table, unsigned int* tamanho_tabela, unsigned int* num_elementos, const char* key, int value) {
+   
+    if ((double)(*num_elementos) / (*tamanho_tabela) >= FATOR_CARGA_MAXIMO) {
+        unsigned int novoTamanho = (*tamanho_tabela) * 2;
+        node** novaTabela = (node**)calloc(novoTamanho, sizeof(node*));
+        if (!novaTabela) {
+            printf("Erro ao alocar memória para redimensionamento.\n");
+            return;
+        }
+
+        for (unsigned int i = 0; i < (*tamanho_tabela); i++) {
+            node* current = table[i];
+            while (current) {
+                node* next = current->next;
+                unsigned int novoIndice = hash(current->key, novoTamanho);
+                current->next = novaTabela[novoIndice];
+                novaTabela[novoIndice] = current;
+                current = next;
+            }
+        }
+
+        free(table);
+        table = novaTabela;
+        *tamanho_tabela = novoTamanho;
+    }
+
+    unsigned int index = hash(key, *tamanho_tabela);
+    node* novoNo = criarNo(key, value);
+    if (!novoNo) return;
+
+    novoNo->next = table[index];
+    table[index] = novoNo;
+    (*num_elementos)++;
+}
+
+int search(node** table, unsigned int tamanho_tabela, const char* key) {
+    unsigned int index = hash(key, tamanho_tabela);
     node* current = table[index];
     while (current) {
         if (strcmp(current->key, key) == 0) {
@@ -44,12 +76,11 @@ int search(node* table[], const char* key) {
         }
         current = current->next;
     }
-    return -1; // Retorna -1 se não encontrado
+    return -1; 
 }
 
-// Função para remover um elemento da tabela
-void removeKey(node* table[], const char* key) {
-    unsigned int index = hash(key);
+void removeKey(node** table, unsigned int tamanho_tabela, unsigned int* num_elementos, const char* key) {
+    unsigned int index = hash(key, tamanho_tabela);
     node* current = table[index];
     node* prev = NULL;
 
@@ -61,6 +92,7 @@ void removeKey(node* table[], const char* key) {
                 table[index] = current->next;
             }
             free(current);
+            (*num_elementos)--;
             printf("Chave '%s' removida.\n", key);
             return;
         }
@@ -70,9 +102,20 @@ void removeKey(node* table[], const char* key) {
     printf("Chave '%s' não encontrada.\n", key);
 }
 
-// Função para imprimir a tabela
-void printTable(node* table[]) {
-    for (int i = 0; i < TAMANHO_TABELA; i++) {
+void liberarTabela(node** table, unsigned int tamanho_tabela) {
+    for (unsigned int i = 0; i < tamanho_tabela; i++) {
+        node* current = table[i];
+        while (current) {
+            node* next = current->next;
+            free(current);
+            current = next;
+        }
+    }
+    free(table);
+}
+
+void printTable(node** table, unsigned int tamanho_tabela) {
+    for (unsigned int i = 0; i < tamanho_tabela; i++) {
         printf("Índice %d: ", i);
         node* current = table[i];
         while (current) {
@@ -83,7 +126,6 @@ void printTable(node* table[]) {
     }
 }
 
-// Exibe o menu de opções
 void menu() {
     printf("\n===== MENU =====\n");
     printf("1. Adicionar\n");
@@ -96,7 +138,14 @@ void menu() {
 }
 
 int main() {
-    node* hashTable[TAMANHO_TABELA] = { NULL };
+    unsigned int tamanho_tabela = TAMANHO_INICIAL;
+    unsigned int num_elementos = 0;
+    node** hashTable = (node**)calloc(tamanho_tabela, sizeof(node*));
+    if (!hashTable) {
+        printf("Erro ao alocar memória para a tabela hash.\n");
+        return 1;
+    }
+
     int opcao, valor;
     char chave[50];
 
@@ -110,14 +159,14 @@ int main() {
             scanf("%s", chave);
             printf("Digite o valor: ");
             scanf("%d", &valor);
-            insert(hashTable, chave, valor);
+            insert(hashTable, &tamanho_tabela, &num_elementos, chave, valor);
             printf("Entrada adicionada com sucesso!\n");
             break;
 
         case 2:
             printf("Digite a chave para buscar: ");
             scanf("%s", chave);
-            valor = search(hashTable, chave);
+            valor = search(hashTable, tamanho_tabela, chave);
             if (valor != -1) {
                 printf("Valor encontrado: %d\n", valor);
             } else {
@@ -128,15 +177,16 @@ int main() {
         case 3:
             printf("Digite a chave para remover: ");
             scanf("%s", chave);
-            removeKey(hashTable, chave);
+            removeKey(hashTable, tamanho_tabela, &num_elementos, chave);
             break;
 
         case 4:
-            printTable(hashTable);
+            printTable(hashTable, tamanho_tabela);
             break;
 
         case 5:
-            printf("Saindo do programa.\n");
+            liberarTabela(hashTable, tamanho_tabela);
+            printf("Memória liberada. Saindo do programa.\n");
             return 0;
 
         default:

@@ -54,7 +54,7 @@ No* dividir_no(No* no, int* chave_promovida) {
     return novo_no;
 }
 
-// Função de inserção recursiva com melhoria para evitar inserções excessivas
+// Função de inserção recursiva
 No* inserir(No* raiz, int chave) {
     if (raiz == NULL) {
         raiz = criar_no();

@@ -54,7 +54,7 @@ No* dividir_no(No* no, int* chave_promovida) {
     return novo_no;
 }
 
-// Função de inserção recursiva
+// Função de inserção recursiva com melhoria para evitar inserções excessivas
 No* inserir(No* raiz, int chave) {
     if (raiz == NULL) {
         raiz = criar_no();
@@ -63,12 +63,12 @@ No* inserir(No* raiz, int chave) {
         return raiz;
     }
 
-    // Verifica se o nó atual está cheio
+    // Caso o nó raiz esteja cheio, dividir
     if (raiz->num_chaves == MAX_CHAVES) {
         int chave_promovida;
         No* novo_no = dividir_no(raiz, &chave_promovida);
 
-        // Cria um novo nó raiz
+        // Se a raiz estava cheia, criar uma nova raiz e promover a chave
         No* nova_raiz = criar_no();
         nova_raiz->chaves[0] = chave_promovida;
         nova_raiz->num_chaves = 1;
@@ -85,6 +85,7 @@ No* inserir(No* raiz, int chave) {
     }
     i++;
 
+    // Se o nó filho não estiver vazio, recursivamente chama a inserção
     if (raiz->filhos[i] != NULL) {
         raiz->filhos[i] = inserir(raiz->filhos[i], chave);
     } else {
@@ -137,23 +138,26 @@ No* remover(No* raiz, int chave) {
 
     // Balanceamento após a remoção
     if (raiz->filhos[i] != NULL && raiz->filhos[i]->num_chaves < MIN_CHAVES) {
-        // Tenta emprestar uma chave do irmão esquerdo
+        // Tentando emprestar uma chave do irmão esquerdo
         if (i > 0 && raiz->filhos[i - 1]->num_chaves > MIN_CHAVES) {
             No* filho = raiz->filhos[i];
             No* irmao = raiz->filhos[i - 1];
 
             // Move a chave do irmão para o nó pai
-            for (int j = filho->num_chaves; j > 0; j--) {
-                filho->chaves[j] = filho->chaves[j - 1];
-            }
-            filho->chaves[0] = raiz->chaves[i - 1];
+            filho->chaves[filho->num_chaves] = raiz->chaves[i - 1];
             filho->num_chaves++;
 
             // Move a chave do pai para o irmão
             raiz->chaves[i - 1] = irmao->chaves[irmao->num_chaves - 1];
             irmao->num_chaves--;
+
+            // Se o irmão tiver filhos, move o filho mais à direita para o filho
+            if (irmao->filhos[irmao->num_chaves] != NULL) {
+                filho->filhos[filho->num_chaves] = irmao->filhos[irmao->num_chaves];
+                irmao->filhos[irmao->num_chaves] = NULL;
+            }
         }
-        // Tenta emprestar uma chave do irmão direito
+        // Tentando emprestar uma chave do irmão direito
         else if (i < raiz->num_chaves && raiz->filhos[i + 1]->num_chaves > MIN_CHAVES) {
             No* filho = raiz->filhos[i];
             No* irmao = raiz->filhos[i + 1];
@@ -168,13 +172,21 @@ No* remover(No* raiz, int chave) {
                 irmao->chaves[j] = irmao->chaves[j + 1];
             }
             irmao->num_chaves--;
+
+            // Se o irmão tiver filhos, move o filho mais à esquerda para o filho
+            if (irmao->filhos[0] != NULL) {
+                filho->filhos[filho->num_chaves] = irmao->filhos[0];
+                irmao->filhos[0] = NULL;
+            }
         }
         // Caso não seja possível emprestar, funde os nós
         else {
+            No* filho = raiz->filhos[i];
+            No* irmao;
+
+            // Fusão com o irmão esquerdo
             if (i > 0) {
-                // Fusão com o irmão esquerdo
-                No* filho = raiz->filhos[i];
-                No* irmao = raiz->filhos[i - 1];
+                irmao = raiz->filhos[i - 1];
 
                 // Move a chave do pai para o irmão
                 irmao->chaves[irmao->num_chaves] = raiz->chaves[i - 1];
@@ -185,6 +197,11 @@ No* remover(No* raiz, int chave) {
                     irmao->chaves[irmao->num_chaves + j] = filho->chaves[j];
                 }
                 irmao->num_chaves += filho->num_chaves;
+
+                // Move os filhos do filho para o irmão
+                for (int j = 0; j <= filho->num_chaves; j++) {
+                    irmao->filhos[irmao->num_chaves + j] = filho->filhos[j];
+                }
 
                 // Libera o filho
                 free(filho);
@@ -197,10 +214,10 @@ No* remover(No* raiz, int chave) {
                     raiz->filhos[j] = raiz->filhos[j + 1];
                 }
                 raiz->num_chaves--;
-            } else {
-                // Fusão com o irmão direito
-                No* filho = raiz->filhos[i];
-                No* irmao = raiz->filhos[i + 1];
+            }
+            // Fusão com o irmão direito
+            else {
+                irmao = raiz->filhos[i + 1];
 
                 // Move a chave do pai para o filho
                 filho->chaves[filho->num_chaves] = raiz->chaves[i];
@@ -211,6 +228,11 @@ No* remover(No* raiz, int chave) {
                     filho->chaves[filho->num_chaves + j] = irmao->chaves[j];
                 }
                 filho->num_chaves += irmao->num_chaves;
+
+                // Move os filhos do irmão para o filho
+                for (int j = 0; j <= irmao->num_chaves; j++) {
+                    filho->filhos[filho->num_chaves + j] = irmao->filhos[j];
+                }
 
                 // Libera o irmão
                 free(irmao);
@@ -266,8 +288,7 @@ void liberar_arvore(No* raiz) {
     }
 }
 
-// Menu interativo
-void menu() {
+int main() {
     No* raiz = NULL;
     int escolha, chave;
 
@@ -307,9 +328,5 @@ void menu() {
 
     // Liberar memória antes de sair
     liberar_arvore(raiz);
-}
-
-int main() {
-    menu();
     return 0;
 }
